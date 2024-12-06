@@ -31,69 +31,76 @@
 # if __name__ == "__main__":
 #     app.run(debug=True)
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-model_name = "meta-llama/Llama-3.1-8B-Instruct"
-local_model_dir = "./local-llama-3.1-8B"
-
-# Download the model and tokenizer
-model = AutoModelForCausalLM.from_pretrained(model_name, cache_dir=local_model_dir)
-tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=local_model_dir)
-
-
-import transformers
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from huggingface_hub import login
 from accelerate import init_empty_weights, infer_auto_device_map, load_checkpoint_and_dispatch
+import transformers
+import torch
+import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-# Log in to Hugging Face
-login(token='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')
 
-# Set the local directory where the model is saved
-local_model_dir = "./local-llama-3.1-8B"
 
-# Initialize the model with empty weights to enable disk offload
-with init_empty_weights():
-    config = transformers.AutoConfig.from_pretrained(local_model_dir)
-    model = AutoModelForCausalLM.from_config(config)
+def main():
+    try:
+        # Model and Tokenizer Configuration
+        model_name = "meta-llama/Llama-3.1-8B-Instruct"
+        local_model_dir = "./local-llama-3.1-8B"
+        
+        # Login to Hugging Face
+        login(token='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')
 
-# Use infer_auto_device_map to create a device map for disk offload
-device_map = infer_auto_device_map(model)
+        # Download and cache the model and tokenizer if not already available
+        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=local_model_dir)
+        model = AutoModelForCausalLM.from_pretrained(model_name, cache_dir=local_model_dir)
+        
+        # Initialize the model with empty weights for disk offload
+        with init_empty_weights():
+            config = transformers.AutoConfig.from_pretrained(local_model_dir)
+            model = AutoModelForCausalLM.from_config(config)
 
-# Dispatch the model using load_checkpoint_and_dispatch for disk offloading
-model = load_checkpoint_and_dispatch(
-    model,
-    checkpoint=local_model_dir,
-    device_map=device_map,
-    offload_folder=r'c:/Users/edominer/Python Project/ChatBot/ChatBot_with_Database'
-)
+        # Create device map for disk offload
+        device_map = infer_auto_device_map(model)
 
-# Use the pipeline with the dispatched model
-text_generation_pipeline = pipeline(
-    "text-generation",
-    model=model,
-    tokenizer=tokenizer,
-    torch_dtype=torch.float16,
-    device_map=device_map
-)
+        # Dispatch the model using load_checkpoint_and_dispatch
+        model = load_checkpoint_and_dispatch(
+            model,
+            checkpoint=local_model_dir,
+            device_map=device_map,
+            offload_folder=r'c:/Users/edominer/Python Project/ChatBot/ChatBot_with_Database'
+        )
 
-# Text to generate completion for
-prompt = 'I have tomatoes, basil and cheese at home. What can I cook for dinner?\n'
+        # Set up the text generation pipeline
+        text_generation_pipeline = pipeline(
+            "text-generation",
+            model=model,
+            tokenizer=tokenizer,
+            torch_dtype=torch.float16,
+            device_map=device_map
+        )
 
-# Generate sequences
-sequences = text_generation_pipeline(
-    prompt,
-    do_sample=True,
-    top_k=10,
-    num_return_sequences=1,
-    eos_token_id=tokenizer.eos_token_id,
-    truncation=True,
-    max_length=400,
-)
+        # Prompt for text generation
+        prompt = 'I have tomatoes, basil and cheese at home. What can I cook for dinner?\n'
 
-# Print the results
-for seq in sequences:
-    print(f"Result: {seq['generated_text']}")
+        # Generate sequences
+        sequences = text_generation_pipeline(
+            prompt,
+            do_sample=True,
+            top_k=10,
+            num_return_sequences=1,
+            eos_token_id=tokenizer.eos_token_id,
+            truncation=True,
+            max_length=400,
+        )
 
+        # Print the results
+        print(sequences)
+        for seq in sequences:
+            print(f"Result: {seq['generated_text']}")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+if __name__ == "__main__":
+    main()
 
